@@ -6,7 +6,7 @@ int main(int argc, char *argv[])
 {
     if(argc <= 1)
     {
-        printf("Error: No argument passed in \n");
+        printf("error: no argument passed in \n");
         exit(0);
     }
 
