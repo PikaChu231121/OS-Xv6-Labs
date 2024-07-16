@@ -293,7 +293,7 @@ fork(void)
   *(np->trapframe) = *(p->trapframe);
 
   // copy trace mask
-  np->tracemask = p->tracemask;
+  np->mask = p->mask;
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
@@ -657,3 +657,18 @@ procdump(void)
     printf("\n");
   }
 }
+
+int 
+getnproc(void)
+{
+  struct proc *p;
+  int n = 0;
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state != UNUSED)
+      n++;
+    release(&p->lock);
+  }
+  return n;
+}
+
