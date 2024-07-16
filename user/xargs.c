@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
 {
     if (argc <= 1)
     {
-        printf("usage: xargs command [initial-args]\n");
+        printf("Usage: xargs command [initial-args]\n");
         exit(1);
     }
     char buf[512];
