@@ -75,12 +75,29 @@ sys_sleep(void)
   return 0;
 }
 
-
 #ifdef LAB_PGTBL
+extern pte_t *walk(pagetable_t, uint64, int);
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 va, bit_addr, bitmask = 0;
+  int pagenum;
+  argaddr(0, &va);
+  argint(1, &pagenum);
+  argaddr(2, &bit_addr);
+
+  struct proc *proc = myproc();
+  for (int i = 0; i < pagenum; i++) {
+    pte_t *pte = walk(proc->pagetable, va+i*PGSIZE, 0);
+    if (pte == 0)
+      panic("page not present.");
+    if (PTE_FLAGS(*pte) & PTE_A) {
+      bitmask = bitmask | (1L << i);
+    }
+    *pte = ((*pte&PTE_A) ^ *pte) ^ 0 ;
+  }
+  if (copyout(proc->pagetable, bit_addr, (char *)&bitmask, sizeof(bitmask)) < 0)
+    panic("sys_pgaccess: copyout failed.");
   return 0;
 }
 #endif
