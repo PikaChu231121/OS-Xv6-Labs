@@ -132,3 +132,13 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void
+backtrace(void)
+{
+  uint64 fp_addr = r_fp();
+  while (fp_addr != PGROUNDDOWN(fp_addr)) {
+    printf("%p\n", *(uint64*)(fp_addr - 8));
+    fp_addr = *(uint64*)(fp_addr - 16);
+  }
+}
