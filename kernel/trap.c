@@ -6,6 +6,8 @@
 #include "proc.h"
 #include "defs.h"
 
+extern pte_t * walk(pagetable_t pagetable, uint64 va, int alloc);
+
 struct spinlock tickslock;
 uint ticks;
 
@@ -27,6 +29,29 @@ void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
+}
+
+int 
+cowhandler(pagetable_t pagetable, uint64 va)
+{
+  char *mem;
+  if(va >= MAXVA)
+    return -1;
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return -1;
+  if((*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_RSW) == 0)
+    return -1;
+  if((mem = kalloc()) == 0)
+    return -1;
+
+  uint64 pa = PTE2PA(*pte);
+  memmove((char*)mem, (char*)pa, PGSIZE);
+  kfree((void*)pa);
+  uint flags = PTE_FLAGS(*pte);
+  *pte = (PA2PTE(mem) | flags | PTE_W);
+  *pte &= ~PTE_RSW;
+  return 0;
 }
 
 //
@@ -65,6 +90,13 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 15){
+    uint64 va = r_stval();
+    if(va >= p->sz)
+      p->killed = 1;
+    int ret = cowhandler(p->pagetable, va);
+    if(ret != 0)
+      p->killed = 1;
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -217,4 +249,3 @@ devintr()
     return 0;
   }
 }
-
