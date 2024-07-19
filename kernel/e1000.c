@@ -20,6 +20,8 @@ static struct mbuf *rx_mbufs[RX_RING_SIZE];
 static volatile uint32 *regs;
 
 struct spinlock e1000_lock;
+struct spinlock tx_lock;
+struct spinlock rx_lock;
 
 // called by pci_init().
 // xregs is the memory address at which the
@@ -95,26 +97,53 @@ e1000_init(uint32 *xregs)
 int
 e1000_transmit(struct mbuf *m)
 {
-  //
-  // Your code here.
-  //
-  // the mbuf contains an ethernet frame; program it into
-  // the TX descriptor ring so that the e1000 sends it. Stash
-  // a pointer so that it can be freed after sending.
-  //
-  
+  acquire(&tx_lock);
+  uint32 tail = regs[E1000_TDT]; // 询问下一个数据包的TX环索引
+
+  if(!(tx_ring[tail].status & E1000_TXD_STAT_DD)){
+    release(&tx_lock);
+    return -1; // 环已满
+  } // 检查环是否溢出
+
+  if(tx_mbufs[tail]){
+    mbuffree(tx_mbufs[tail]); // 释放上一个数据包的缓冲区
+  }
+
+  tx_ring[tail].addr = (uint64) m->head; // 设置数据包的地址
+  tx_ring[tail].cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS; // 设置命令字
+  tx_ring[tail].length = m->len; // 设置数据包的长度
+  tx_mbufs[tail] = m; // 保存数据包的缓冲区
+
+  regs[E1000_TDT] = (tail + 1) % TX_RING_SIZE; // 更新环索引
+  release(&tx_lock);
   return 0;
 }
 
 static void
 e1000_recv(void)
 {
-  //
-  // Your code here.
-  //
-  // Check for packets that have arrived from the e1000
-  // Create and deliver an mbuf for each packet (using net_rx()).
-  //
+  struct mbuf *m;
+  acquire(&rx_lock);
+  uint32 tail = (regs[E1000_RDT] + 1) % RX_RING_SIZE; // 获得下一个数据包的索引
+  uint32 temp = tail;
+
+  while(1){
+    if(!(rx_ring[tail].status & E1000_RXD_STAT_DD))
+      break; // 检查环是否为空
+    
+    rx_mbufs[tail]->len = rx_ring[tail].length; // 设置数据包的长度
+    net_rx(rx_mbufs[tail]); // 发送数据包到网络层
+    temp = tail; // 保存当前数据包的索引
+    m = mbufalloc(0); // 分配新的缓冲区
+    rx_mbufs[tail] = m; // 保存新的缓冲区
+    rx_ring[tail].addr = (uint64) m->head; // 设置新的缓冲区的地址
+    rx_ring[tail].status = 0; // 清空状态字
+    regs[E1000_RDT] = tail; // 更新环索引
+    tail = (tail + 1) % RX_RING_SIZE; // 更新下一个数据包的索引
+  }
+
+  regs[E1000_RDT] = temp; // 更新环索引
+  release(&rx_lock);
 }
 
 void
